@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실험 참가자 모집</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f7f6; color: #333; }
+        .container { max-width: 800px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #0056b3; }
+        .gender-selector, .session-list-container { margin-bottom: 30px; }
+        .gender-selector fieldset { border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+        .gender-selector legend { font-weight: bold; font-size: 1.2em; padding: 0 10px; }
+        .gender-selector label { margin-right: 20px; font-size: 1.1em; cursor: pointer; }
+        #user-info-form { margin-bottom: 20px; background: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee; }
+        #user-info-form input { padding: 8px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        #session-list { list-style-type: none; padding: 0; }
+        #session-list li { display: flex; justify-content: space-between; align-items: center; padding: 15px; border: 1px solid #eee; border-radius: 5px; margin-bottom: 10px; transition: background-color 0.2s; }
+        #session-list li:hover { background-color: #f9f9f9; }
+        .session-info { font-weight: bold; }
+        .remaining-slots { color: #28a745; }
+        .apply-btn { padding: 8px 15px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; }
+        .apply-btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        #status-message { text-align: center; font-weight: bold; padding: 10px; border-radius: 5px; margin-top: 20px; display: none; }
+        .success { background-color: #e9f7ef; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>실험경제학 참가자 모집</h1>
+
+    <div class="gender-selector">
+        <fieldset>
+            <legend>1. 성별을 선택해주세요</legend>
+            <label><input type="radio" name="gender" value="male"> 남성</label>
+            <label><input type="radio" name="gender" value="female"> 여성</label>
+        </fieldset>
+    </div>
+
+    <div class="session-list-container">
+        <h2>2. 참여자 정보 입력 및 세션 선택</h2>
+        
+        <div id="user-info-form" style="display: none;">
+            <label for="name">이름:</label>
+            <input type="text" id="name" name="name" placeholder="홍길동" required>
+            <label for="email">이메일:</label>
+            <input type="email" id="email" name="email" placeholder="example@email.com" required>
+        </div>
+        
+        <ul id="session-list">
+            </ul>
+        <p id="instruction" style="text-align: center; color: #888;">먼저 성별을 선택하시면 참여 가능한 세션 목록이 표시됩니다.</p>
+    </div>
+    
+    <div id="status-message"></div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const genderRadios = document.querySelectorAll('input[name="gender"]');
+        const sessionList = document.getElementById('session-list');
+        const instructionText = document.getElementById('instruction');
+        const statusMessage = document.getElementById('status-message');
+        const userInfoForm = document.getElementById('user-info-form');
+
+        let selectedGender = null;
+
+        // 성별 선택 시 세션 목록 불러오기 및 정보 입력 폼 보이기
+        genderRadios.forEach(radio => {
+            radio.addEventListener('change', (event) => {
+                selectedGender = event.target.value;
+                userInfoForm.style.display = 'block'; // 정보 입력 폼 보이기
+                instructionText.style.display = 'none';
+                fetchSessionStatus();
+            });
+        });
+
+        // 서버에서 세션 상태를 가져와 화면에 표시하는 함수
+        async function fetchSessionStatus() {
+            if (!selectedGender) return;
+
+            const response = await fetch('/api/sessions');
+            const data = await response.json();
+            
+            sessionList.innerHTML = ''; // 목록 초기화
+
+            for (const sessionId in data) {
+                const remaining = data[sessionId][selectedGender];
+                const sessionNumber = sessionId.split('_')[1];
+
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="session-info">세션 ${sessionNumber}</span>
+                    <span class="remaining-slots">남은 자리: ${remaining}</span>
+                    <button class="apply-btn" data-session-id="${sessionId}" ${remaining === 0 ? 'disabled' : ''}>
+                        신청하기
+                    </button>
+                `;
+                sessionList.appendChild(li);
+            }
+        }
+
+        // '신청하기' 버튼 클릭 이벤트 처리
+        sessionList.addEventListener('click', async (event) => {
+            if (event.target.classList.contains('apply-btn')) {
+                const nameInput = document.getElementById('name');
+                const emailInput = document.getElementById('email');
+
+                // 이름과 이메일이 입력되었는지 확인
+                if (!nameInput.value || !emailInput.value) {
+                    alert('이름과 이메일을 모두 입력해주세요.');
+                    return;
+                }
+
+                const button = event.target;
+                const sessionId = button.dataset.sessionId;
+
+                button.disabled = true;
+                button.textContent = '처리 중...';
+
+                // 서버로 보낼 데이터에 이름과 이메일 포함
+                const response = await fetch('/api/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        session_id: sessionId, 
+                        gender: selectedGender,
+                        name: nameInput.value,
+                        email: emailInput.value
+                    })
+                });
+                
+                const result = await response.json();
+                
+                // 상태 메시지 표시
+                statusMessage.textContent = result.message;
+                statusMessage.className = result.success ? 'success' : 'error';
+                statusMessage.style.display = 'block';
+
+                // 2초 후 메시지 숨기기
+                setTimeout(() => { statusMessage.style.display = 'none'; }, 3000);
+
+                // 신청 성공 시 입력 필드 초기화
+                if(result.success) {
+                    nameInput.value = '';
+                    emailInput.value = '';
+                }
+
+                // 최신 목록으로 업데이트
+                fetchSessionStatus(); 
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
